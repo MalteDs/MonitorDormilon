@@ -1,8 +1,9 @@
 package model;
+
 import java.util.Random;
 
 public class Student implements Runnable {
-    private final Integer id;
+    private final int id;
     private final Random random = new Random();
 
     public Student(int id) {
@@ -11,52 +12,61 @@ public class Student implements Runnable {
 
     @Override
     public void run() {
-        while(true){
-            try{
-                // tiempo programando en sala
-                System.out.println("Student " + id + " is programming");
-                Thread.sleep(random.nextInt(5000) + 1000);
-                // buscar ayuda
-                System.out.println("Student " + id + " is going to the monitor");
+        while(true) {
+            try {
+                // Tiempo programando
+                System.out.println("[Student " + id + "] programming");
+                Thread.sleep(random.nextInt(4000) + 1000);
                 
-                synchronized(Monitor.lock){
-                    if(Monitor.monitorSleeping){
-                        // despertar al monitor
-                        System.out.println("Student " + id + " wakes up the monitor");
-                        Monitor.semaphoreMonitor.release();
-                        Monitor.monitorSleeping = false;
+                // Buscar ayuda
+                System.out.println("[Student " + id + "] needs help");
+                
+                boolean shouldWakeUp = false;
+                synchronized(Monitor.lock) {
+                    if(Monitor.isSleeping && !Monitor.isHelping) {
+                        shouldWakeUp = true;
+                        Monitor.isSleeping = false;
                     }
                 }
-
-                // intentar entrar a la oficina
-                if(Monitor.semaphoreOffice.tryAcquire()){
-                    // entrar a la oficina
-                    System.out.println("Student " + id + " enters the office");
-                    Thread.sleep(random.nextInt(5000) + 1000);
-                    System.out.println("Student " + id + " end help, leaves the office");
-                    Monitor.semaphoreOffice.release();
-                }else{
-                    // intentar sentarse
-                    if(Monitor.semaphoreChair.tryAcquire()){
-                        synchronized(Monitor.lock){
-                            Monitor.queueStudents.add(id);
-                            System.out.println("Student " + id + " is waiting for help. Students in queue: " + Monitor.queueStudents.size());
-                        }
-                        // esperar a ser atendido
-                        Monitor.semaphoreOffice.acquire();
-                        // ya fue atendido, continuar
-                        continue;
-                    } else {
-                        // no hay sillas, salir
-                        System.out.println("Student " + id + ": no chairs available, will try later");
-                    }   
+                
+                if(shouldWakeUp) {
+                    System.out.println("[Student " + id + "] wakes up the monitor");
+                    Monitor.semaphoreMonitor.release();
                 }
-            }catch(InterruptedException e){
-                System.out.println("Error in student " + id);
+
+                // Intentar entrar directamente
+                if(Monitor.semaphoreOffice.tryAcquire()) {
+                    System.out.println("[Student " + id + "] enters office");
+                    Thread.sleep(random.nextInt(3000) + 1000);
+                    System.out.println("[Student " + id + "] leaves office");
+                    Monitor.semaphoreOffice.release();
+                    continue;
+                }
+
+                // Intentar sentarse a esperar
+                if(Monitor.semaphoreChairs.tryAcquire()) {
+                    synchronized(Monitor.lock) {
+                        Monitor.waitingStudents.add(id);
+                        System.out.println("[Student " + id + "] sits waiting (" + 
+                                         Monitor.waitingStudents.size() + " waiting)");
+                    }
+                    
+                    // Esperar turno
+                    Monitor.semaphoreOffice.acquire();
+                    
+                    // Una vez adquirido el permiso, ser atendido
+                    System.out.println("[Student " + id + "] being helped");
+                    Thread.sleep(random.nextInt(3000) + 1000);
+                    System.out.println("[Student " + id + "] finishes help");
+                    Monitor.semaphoreOffice.release();
+                } else {
+                    System.out.println("[Student " + id + "] no chairs available, will return later");
+                }
+            } catch(InterruptedException e) {
+                System.out.println("[Student " + id + "] interrupted");
                 Thread.currentThread().interrupt();
                 return;
             }
         }
     }
-
 }
